@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-from statsmodels.tsa.arima.model import ARIMA
+from statsmodels.tsa.statespace.sarimax import SARIMAX
 from sklearn.metrics import mean_squared_error, mean_absolute_error
 from sklearn.model_selection import TimeSeriesSplit
 import seaborn as sns
@@ -30,51 +30,45 @@ try:
 except ValueError as e:
     print(f"Warning: {e}")
 
-# Кросс-валидация и оценка модели ARIMA
-tscv = TimeSeriesSplit(n_splits=5)
-mse_scores, rmse_scores, mae_scores = [], [], []
-
-for train_index, test_index in tscv.split(commodity_data):
-    y_train = commodity_data['Soybeans'].iloc[train_index]
-    y_test = commodity_data['Soybeans'].iloc[test_index]
-
-    model = ARIMA(y_train, order=(1, 0, 0))
-    model_fit = model.fit()
-    y_pred = model_fit.forecast(steps=len(y_test))
-
-    mse_scores.append(mean_squared_error(y_test, y_pred))
-    rmse_scores.append(np.sqrt(mse_scores[-1]))
-    mae_scores.append(mean_absolute_error(y_test, y_pred))
-
-mse_avg, rmse_avg, mae_avg = np.mean(mse_scores), np.mean(rmse_scores), np.mean(mae_scores)
-print(f"Среднее MSE: {mse_avg:.2f}, Среднее RMSE: {rmse_avg:.2f}, Среднее MAE: {mae_avg:.2f}")
-
-# Прогнозирование на 2024-2030 годы
+# Прогнозирование на 2024-2030 годы с упрощенными параметрами SARIMA
 forecasted_data = {}
 forecast_period = 2030 - 2023 + 1
 forecast_index = pd.date_range(start='2024', periods=forecast_period, freq='YS')
 
+# Упрощенные параметры SARIMA
+simplified_params = (1, 0, 1, 0, 1, 1, 12)
+
 for column in ['Soybeans', 'Sunflower Oil', 'Wheat', 'Phosphate Rock']:
-    model_final = ARIMA(commodity_data[column], order=(1, 0, 0))
-    model_fit_final = model_final.fit()
+    model_final = SARIMAX(commodity_data[column], order=simplified_params[:3], seasonal_order=simplified_params[3:])
+    model_fit_final = model_final.fit(disp=False)
     forecast = model_fit_final.get_forecast(steps=forecast_period)
     forecast_values = forecast.predicted_mean
     forecasted_data[column] = forecast_values
 
 forecast_df_all = pd.DataFrame(forecasted_data, index=forecast_index)
 
-# Визуализация временных рядов
+# Визуализация временных рядов с реальными и прогнозируемыми данными с совпадением цветов
 plt.figure(figsize=(14, 8))
-for column in ['Soybeans', 'Sunflower Oil', 'Wheat', 'Phosphate Rock']:
-    plt.plot(commodity_data.index, commodity_data[column], label=f'Реальные данные: {column}')
-    plt.plot(forecast_df_all.index, forecast_df_all[column], linestyle='--', label=f'Прогнозируемые данные: {column}')
+colors = plt.cm.tab10(np.linspace(0, 1, len(['Soybeans', 'Sunflower Oil', 'Wheat', 'Phosphate Rock'])))
+for i, column in enumerate(['Soybeans', 'Sunflower Oil', 'Wheat', 'Phosphate Rock']):
+    plt.plot(commodity_data.index, commodity_data[column], color=colors[i], label=f'Реальные данные: {column}')
+    plt.plot(forecast_df_all.index, forecast_df_all[column], linestyle='--', marker='o', color=colors[i], label=f'Прогнозируемые данные: {column}')
 
-plt.title('Прогнозирование цен на товары (2024-2030)')
+plt.title('Прогнозирование цен на товары (упрощенная SARIMA) (2024-2030)')
 plt.xlabel('Год')
 plt.ylabel('Цена ($/mt)')
 plt.legend()
 plt.grid(True)
-plt.xticks(pd.date_range(start='2010-01-01', end='2031-01-01', freq='YS'), rotation=45)
+plt.xticks(pd.date_range(start=commodity_data.index.min(), end='2031-01-01', freq='YS'), rotation=45, fontsize=8, ha='right')
+plt.xlim(left=commodity_data.index.min(), right=forecast_df_all.index.max())
+
+plt.show()
+
+
+# Уменьшение размера шрифта для меток дат и их улучшенная читабельность
+plt.xticks(pd.date_range(start=commodity_data.index.min(), end='2031-01-01', freq='YS'), rotation=45, fontsize=8, ha='right')
+plt.xlim(left=commodity_data.index.min(), right=forecast_df_all.index.max())
+
 plt.show()
 
 # Корреляционная матрица
